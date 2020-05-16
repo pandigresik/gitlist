@@ -2,10 +2,10 @@
 
 namespace GitList\Git;
 
-use Gitter\Repository as BaseRepository;
 use Gitter\Model\Commit\Commit;
 use Gitter\Model\Commit\Diff;
 use Gitter\PrettyFormat;
+use Gitter\Repository as BaseRepository;
 use Symfony\Component\Filesystem\Filesystem;
 
 class Repository extends BaseRepository
@@ -13,8 +13,9 @@ class Repository extends BaseRepository
     /**
      * Return true if the repo contains this commit.
      *
-     * @param $commitHash Hash of commit whose existence we want to check
-     * @return boolean Whether or not the commit exists in this repo
+     * @param string $commitHash Hash of commit whose existence we want to check
+     *
+     * @return bool Whether or not the commit exists in this repo
      */
     public function hasCommit($commitHash)
     {
@@ -35,21 +36,65 @@ class Repository extends BaseRepository
     }
 
     /**
-     * Show the data from a specific commit
+     * Show Patches that where apllied to the selected file.
+     *
+     * @param  string $file File path for which we will retrieve a list of patch logs
+     *
+     * @return array  Collection of Commits data
+     */
+    public function getCommitsLogPatch($file)
+    {
+        $record_delimiter = chr(hexdec('0x1e'));
+        $file_patches = $this->getClient()->run(
+            $this,
+            'log -p --pretty=format:"' . $record_delimiter . '<item><hash>%H</hash>'
+            . '<short_hash>%h</short_hash><tree>%T</tree><parents>%P</parents>'
+            . '<author>%aN</author><author_email>%aE</author_email>'
+            . '<date>%at</date><commiter>%cN</commiter><commiter_email>%cE</commiter_email>'
+            . '<commiter_date>%ct</commiter_date>'
+            . '<message><![CDATA[%s]]></message>'
+            . '<body><![CDATA[%b]]></body>'
+            . "</item>\" -- $file"
+        );
+
+        $patch_collection = array();
+        foreach (preg_split('/(' . $record_delimiter . '\<item\>)/', $file_patches, null, PREG_SPLIT_NO_EMPTY) as $patches) {
+            $patches = '<item>' . $patches;
+            $xmlEnd = strpos($patches, '</item>') + 7;
+            $commitInfo = substr($patches, 0, $xmlEnd);
+            $commitData = substr($patches, $xmlEnd);
+            $logs = explode("\n", $commitData);
+
+            // Read commit metadata
+            $format = new PrettyFormat();
+            $data = $format->parse($commitInfo);
+            $commit = new Commit();
+            $commit->importData($data[0]);
+            $commit->setDiffs($this->readDiffLogs($logs));
+            $patch_collection[] = $commit;
+        }
+
+        return $patch_collection;
+    }
+
+    /**
+     * Show the data from a specific commit.
      *
      * @param  string $commitHash Hash of the specific commit to read data
+     *
      * @return array  Commit data
      */
     public function getCommit($commitHash)
     {
-        $logs = $this->getClient()->run($this,
-                  "show --pretty=format:\"<item><hash>%H</hash>"
-                . "<short_hash>%h</short_hash><tree>%T</tree><parents>%P</parents>"
-                . "<author>%aN</author><author_email>%aE</author_email>"
-                . "<date>%at</date><commiter>%cN</commiter><commiter_email>%cE</commiter_email>"
-                . "<commiter_date>%ct</commiter_date>"
-                . "<message><![CDATA[%s]]></message>"
-                . "<body><![CDATA[%b]]></body>"
+        $logs = $this->getClient()->run(
+            $this,
+                  'show --pretty=format:"<item><hash>%H</hash>'
+                . '<short_hash>%h</short_hash><tree>%T</tree><parents>%P</parents>'
+                . '<author>%aN</author><author_email>%aE</author_email>'
+                . '<date>%at</date><commiter>%cN</commiter><commiter_email>%cE</commiter_email>'
+                . '<commiter_date>%ct</commiter_date>'
+                . '<message><![CDATA[%s]]></message>'
+                . '<body><![CDATA[%b]]></body>'
                 . "</item>\" $commitHash"
         );
 
@@ -59,9 +104,9 @@ class Repository extends BaseRepository
         $logs = explode("\n", $commitData);
 
         // Read commit metadata
-        $format = new PrettyFormat;
+        $format = new PrettyFormat();
         $data = $format->parse($commitInfo);
-        $commit = new Commit;
+        $commit = new Commit();
         $commit->importData($data[0]);
 
         if ($commit->getParentsHash()) {
@@ -75,9 +120,10 @@ class Repository extends BaseRepository
     }
 
     /**
-     * Blames the provided file and parses the output
+     * Blames the provided file and parses the output.
      *
      * @param  string $file File that will be blamed
+     *
      * @return array  Commits hashes containing the lines
      */
     public function getBlame($file)
@@ -101,7 +147,7 @@ class Repository extends BaseRepository
                 $blame[$i] = array(
                     'line' => '',
                     'commit' => $currentCommit,
-                    'commitShort' => substr($currentCommit, 0, 8)
+                    'commitShort' => substr($currentCommit, 0, 8),
                 );
             }
 
@@ -113,9 +159,10 @@ class Repository extends BaseRepository
     }
 
     /**
-     * Read diff logs and generate a collection of diffs
+     * Read diff logs and generate a collection of diffs.
      *
      * @param  array $logs Array of log rows
+     *
      * @return array Array of diffs
      */
     public function readDiffLogs(array $logs)
@@ -124,8 +171,8 @@ class Repository extends BaseRepository
         $lineNumOld = 0;
         $lineNumNew = 0;
         foreach ($logs as $log) {
-            # Skip empty lines
-            if ($log == "") {
+            // Skip empty lines
+            if ($log == '') {
                 continue;
             }
 
@@ -134,7 +181,7 @@ class Repository extends BaseRepository
                     $diffs[] = $diff;
                 }
 
-                $diff = new Diff;
+                $diff = new Diff();
                 if (preg_match('/^diff --[\S]+ a\/?(.+) b\/?/', $log, $name)) {
                     $diff->setFile($name[1]);
                 }
@@ -167,16 +214,16 @@ class Repository extends BaseRepository
 
             if (!empty($log)) {
                 switch ($log[0]) {
-                    case "@":
+                    case '@':
                         // Set the line numbers
                         preg_match('/@@ -([0-9]+)(?:,[0-9]+)? \+([0-9]+)/', $log, $matches);
                         $lineNumOld = $matches[1] - 1;
                         $lineNumNew = $matches[2] - 1;
                         break;
-                    case "-":
+                    case '-':
                         $lineNumOld++;
                         break;
-                    case "+":
+                    case '+':
                         $lineNumNew++;
                         break;
                     default:
@@ -201,9 +248,11 @@ class Repository extends BaseRepository
     }
 
     /**
-     * Show the repository commit log with pagination
+     * Show the repository commit log with pagination.
      *
-     * @access public
+     * @param string $file
+     * @param int $page
+     *
      * @return array Commit log
      */
     public function getPaginatedCommits($file = null, $page = 0)
@@ -212,12 +261,12 @@ class Repository extends BaseRepository
         $pager = "--skip=$page --max-count=15";
         $command =
                   "log $pager --pretty=format:\"<item><hash>%H</hash>"
-                . "<short_hash>%h</short_hash><tree>%T</tree><parents>%P</parents>"
-                . "<author>%aN</author><author_email>%aE</author_email>"
-                . "<date>%at</date><commiter>%cN</commiter>"
-                . "<commiter_email>%cE</commiter_email>"
-                . "<commiter_date>%ct</commiter_date>"
-                . "<message><![CDATA[%s]]></message></item>\"";
+                . '<short_hash>%h</short_hash><tree>%T</tree><parents>%P</parents>'
+                . '<author>%aN</author><author_email>%aE</author_email>'
+                . '<date>%at</date><commiter>%cN</commiter>'
+                . '<commiter_email>%cE</commiter_email>'
+                . '<commiter_date>%ct</commiter_date>'
+                . '<message><![CDATA[%s]]></message></item>"';
 
         if ($file) {
             $command .= " $file";
@@ -230,7 +279,7 @@ class Repository extends BaseRepository
         }
 
         foreach ($logs as $log) {
-            $commit = new Commit;
+            $commit = new Commit();
             $commit->importData($log);
             $commits[] = $commit;
         }
@@ -244,12 +293,12 @@ class Repository extends BaseRepository
         $query = strtr($query, array('[' => '\\[', ']' => '\\]'));
         $command =
               "log --grep={$query} -i --pretty=format:\"<item><hash>%H</hash>"
-            . "<short_hash>%h</short_hash><tree>%T</tree><parents>%P</parents>"
-            . "<author>%aN</author><author_email>%aE</author_email>"
-            . "<date>%at</date><commiter>%cN</commiter>"
-            . "<commiter_email>%cE</commiter_email>"
-            . "<commiter_date>%ct</commiter_date>"
-            . "<message><![CDATA[%s]]></message></item>\""
+            . '<short_hash>%h</short_hash><tree>%T</tree><parents>%P</parents>'
+            . '<author>%aN</author><author_email>%aE</author_email>'
+            . '<date>%at</date><commiter>%cN</commiter>'
+            . '<commiter_email>%cE</commiter_email>'
+            . '<commiter_date>%ct</commiter_date>'
+            . '<message><![CDATA[%s]]></message></item>"'
             . " $branch";
 
         try {
@@ -259,7 +308,7 @@ class Repository extends BaseRepository
         }
 
         foreach ($logs as $log) {
-            $commit = new Commit;
+            $commit = new Commit();
             $commit->importData($log);
             $commits[] = $commit;
         }
@@ -269,27 +318,33 @@ class Repository extends BaseRepository
 
     public function searchTree($query, $branch)
     {
+        if (empty($query)) {
+            return null;
+        }
+
+        $query = preg_replace('/(--?[A-Za-z0-9\-]+)/', '', $query);
         $query = escapeshellarg($query);
 
         try {
-            $results = $this->getClient()->run($this, "grep -i --line-number {$query} $branch");
+            $results = $this->getClient()->run($this, "grep -i --line-number -- {$query} $branch");
         } catch (\RuntimeException $e) {
             return false;
         }
 
         $results = explode("\n", $results);
+        $searchResults = array();
 
         foreach ($results as $result) {
             if ($result == '') {
                 continue;
             }
 
-            preg_match_all('/([\w-._]+):([^:]+):([0-9]+):(.+)/', $result, $matches, PREG_SET_ORDER);
+            preg_match_all('/([\w\-._]+):([^:]+):([0-9]+):(.+)/', $result, $matches, PREG_SET_ORDER);
 
             $data['branch'] = $matches[0][1];
-            $data['file']   = $matches[0][2];
-            $data['line']   = $matches[0][3];
-            $data['match']  = $matches[0][4];
+            $data['file'] = $matches[0][2];
+            $data['line'] = $matches[0][3];
+            $data['match'] = $matches[0][4];
 
             $searchResults[] = $data;
         }
@@ -317,7 +372,7 @@ class Repository extends BaseRepository
         return $data;
     }
 
-    public function getStatistics($branch)
+    public function getBranchStatistics($branch)
     {
         // Calculate amount of files, extensions and file size
         $logs = $this->getClient()->run($this, 'ls-tree -r -l ' . $branch);
@@ -344,9 +399,13 @@ class Repository extends BaseRepository
             if (is_numeric($file[3])) {
                 $data['size'] += $file[3];
             }
+        }
 
-            if (($pos = strrpos($file[4], '.')) !== false) {
-                $extension = substr($file[4], $pos);
+        $logs = $this->getClient()->run($this, 'ls-tree -l -r --name-only ' . $branch);
+        $files = explode("\n", $logs);
+        foreach ($files as $file) {
+            if (($pos = strrpos($file, '.')) !== false) {
+                $extension = substr($file, $pos);
 
                 if (($pos = strrpos($extension, '/')) === false) {
                     $data['extensions'][] = $extension;
@@ -361,7 +420,7 @@ class Repository extends BaseRepository
     }
 
     /**
-     * Create a TAR or ZIP archive of a git tree
+     * Create a TAR or ZIP archive of a git tree.
      *
      * @param string $tree   Tree-ish reference
      * @param string $output Output File name
@@ -369,7 +428,7 @@ class Repository extends BaseRepository
      */
     public function createArchive($tree, $output, $format = 'zip')
     {
-        $fs = new Filesystem;
+        $fs = new Filesystem();
         $fs->mkdir(dirname($output));
         $this->getClient()->run($this, "archive --format=$format --output='$output' $tree");
     }
@@ -377,8 +436,10 @@ class Repository extends BaseRepository
     /**
      * Return true if $path exists in $branch; return false otherwise.
      *
-     * @param string $commitish Commitish reference; branch, tag, SHA1, etc.
-     * @param string $path      Path whose existence we want to verify.
+     * @param string $commitish commitish reference; branch, tag, SHA1, etc
+     * @param string $path      path whose existence we want to verify
+     *
+     * @return bool
      *
      * GRIPE Arguably belongs in Gitter, as it's generally useful functionality.
      * Also, this really may not be the best way to do this.
@@ -394,4 +455,3 @@ class Repository extends BaseRepository
         return false;
     }
 }
-

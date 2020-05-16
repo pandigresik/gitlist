@@ -32,3 +32,6 @@ config.ini
 cache.properties
 composer.phar
 phpunit.xml
+.php_cs.cache
+web.config
+.vscode/

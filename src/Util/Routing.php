@@ -2,8 +2,8 @@
 
 namespace GitList\Util;
 
-use Silex\Application;
 use GitList\Exception\EmptyRepositoryException;
+use Silex\Application;
 
 class Routing
 {
@@ -20,6 +20,10 @@ class Routing
      *
      * A helper for parsing routes that use commit-ish names and paths
      * separated by /, since route regexes are not enough to get that right.
+     *
+     * @param string $commitishPath
+     * @param string $repo
+     * @return array
      */
     public function parseCommitishPathParam($commitishPath, $repo)
     {
@@ -35,8 +39,10 @@ class Routing
              $slashPosition === 40)) {
             // We may have a commit hash as our commitish.
             $hash = substr($commitishPath, 0, 40);
-            if ($repository->hasCommit($hash)) {
-                $commitish = $hash;
+            if (preg_match('/[^a-zA-Z0-9]/i', $hash) === 0) {
+                if ($repository->hasCommit($hash)) {
+                    $commitish = $hash;
+                }
             }
         }
 
@@ -121,6 +127,7 @@ class Routing
             );
             $regex = implode('|', $quotedPaths);
         }
+
         return $regex;
     }
 
@@ -137,9 +144,10 @@ class Routing
     }
 
     /**
-     * Strips the base path from a full repository path
+     * Strips the base path from a full repository path.
      *
      * @param  string $repoPath Full path to the repository
+     *
      * @return string Relative path to the repository from git.repositories
      */
     public function getRelativePath($repoPath)
@@ -148,11 +156,9 @@ class Routing
             $relativePath = substr($repoPath, strlen($this->app['git.repos']));
 
             return ltrim(strtr($relativePath, '\\', '/'), '/');
-        } else {
-            throw new \InvalidArgumentException(
+        }
+        throw new \InvalidArgumentException(
                 sprintf("Path '%s' does not match configured repository directory", $repoPath)
             );
-        }
     }
 }
-

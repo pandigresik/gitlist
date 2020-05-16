@@ -8,16 +8,11 @@ use Silex\ServiceProviderInterface;
 
 class RoutingUtilServiceProvider implements ServiceProviderInterface
 {
-    /**
-     * Register the Util\Repository class on the Application ServiceProvider
-     *
-     * @param Application $app Silex Application
-     */
     public function register(Application $app)
     {
-        $app['util.routing'] = $app->share(function () use ($app) {
+        $app['util.routing'] = function () use ($app) {
             return new Routing($app);
-        });
+        };
     }
 
     public function boot(Application $app)
